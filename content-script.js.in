@@ -25,6 +25,22 @@ const workplaceClasses = ["job-card-container__metadata-item--workplace-type"]
 const privateButtonClass = "lijfhidebutton"
 var titleRegexps, companyRegexps, locationRegexps, jobFilters, hideJobs;
 
+const POSSIBLE_CARD_SELECTORS = [
+    '.job-card-container',
+    '.jobs-search-results__list-item',
+    '.jobs-search-result-item',
+    '.job-card-list__entity-lockup',
+    '.jobs-job-board-list__item',
+    '[data-job-id]',
+    '.artdeco-list__item'
+];
+
+const CLASS_NAMES = {
+    company: ['job-card-container__company-name', 'artdeco-entity-lockup__subtitle'],
+    title: ['job-card-list__title', 'artdeco-entity-lockup__title'],
+    location: ['job-card-container__metadata-item', 'artdeco-entity-lockup__caption']
+};
+
 function getButtonElement() {
     utils.debug("getButtonElement");
     var button = document.createElement("button");
@@ -431,63 +447,30 @@ function setListener(elt, jobSpec, wanted, property, finder, listener) {
 }
 
 function filterOneJob(elt) {
-    utils.debug(`filterOneJob(${utils.id(elt)})`);
-    var jobSpec = getJobSpec(elt);
-    var state = getState(elt, jobSpec);
-    var button;
+    const company = getClassValue(elt, CLASS_NAMES.company);
+    const title = getClassValue(elt, CLASS_NAMES.title);
+    const location = getClassValue(elt, CLASS_NAMES.location);
 
-    if (! state) {
-        /*
-          We don't call configureState here because we don't want to put an
-          "initial" state into the cache in case when we finally get the
-          jobSpec it turns out this is a card LinkedIn replaced and we
-          actually know what its state is.
-        */
-        button = findDismissButton(elt);
-        if (! (jobSpec && button))
-            return;
-        state = configureState(elt, jobSpec, "filtering");
-        // fall through
-    }
-
-    if (state == "filtering") {
-        var result = (matches(jobSpec.title, titleRegexps) ||
-                      matches(jobSpec.company, companyRegexps) ||
-                      matches(jobSpec.location, locationRegexps) ||
-                      jobMatches(jobSpec));
-        if (! result) {
-            state = configureState(elt, jobSpec, "visible-pending");
-            // fall through
-        }
-        else {
-            if (result == "private") {
-                state = configureState(elt, jobSpec, "private-hidden")
-                return;
-            }
-            findDismissButton(elt).click();
-            state = configureState(elt, jobSpec, hideJobs ?
-                                   "linkedin-hidden-hidejobs" :
-                                   "linkedin-hidden-pending");
-            return;
-        }
+    if (!company && !title && !location) {
+        return;
     }
     
-    if (state == "visible-pending") {
-        button = findDismissButton(elt);
-        if (! (jobSpec && button))  // not ready yet
-            return;
-        unhideJob(elt, jobSpec);
-        state = configureState(elt, jobSpec, "visible");
+    if (matches(company, companyRegexps)) {
+        hideOrShowJob(elt, true, {company});
         return;
     }
-
-    if (state == "linkedin-hidden-pending") {
-        button = findUnhideButton(elt)
-        if (! button)
-            return;
-        state = configureState(elt, jobSpec, "linkedin-hidden");
+    
+    if (matches(title, titleRegexps)) {
+        hideOrShowJob(elt, true, {title});
         return;
     }
+    
+    if (matches(location, locationRegexps)) {
+        hideOrShowJob(elt, true, {location});
+        return;
+    }
+    
+    hideOrShowJob(elt, false);
 }
 
 function matches(fieldValue, regexps) {
@@ -557,15 +540,29 @@ function unhideJob(elt, jobSpec) {
 var filterTimeout;
 
 function filterEverything() {
-    utils.debug("filterEverything()");
-    cardCacheMark();
-    if (filterTimeout)
-        clearTimeout(filterTimeout);
-    filterTimeout = setTimeout(cardCacheCollect, 5000);
-    var elts = document.querySelectorAll(
-        cardClasses.map(c => `.${c}`).join(", "));
-    for (var elt of elts) {
-        filterOneJob(elt);
+    let cards = [];
+    
+    for (const selector of POSSIBLE_CARD_SELECTORS) {
+        const found = document.querySelectorAll(selector);
+        if (found.length > 0) {
+            cards = found;
+            break;
+        }
+    }
+    
+    if (cards.length === 0) {
+        const originalSelector = cardClasses.map(c => `.${c}`).join(", ");
+        cards = document.querySelectorAll(originalSelector);
+    }
+    
+    if (cards.length > 0) {
+        Array.from(cards).forEach((card) => {
+            try {
+                filterOneJob(card);
+            } catch (e) {
+                console.error("Error filtering job:", e);
+            }
+        });
     }
 }
 
@@ -602,3 +599,34 @@ chrome.storage.onChanged.addListener((changes, namespace) => {
     if (namespace != "sync") return;
     loadOptions();
 });
+
+function hideOrShowJob(elt, shouldHide, matchInfo) {
+    try {
+        if (shouldHide) {
+            elt.style.opacity = "0.3";
+            if (hideJobs) {
+                elt.style.display = "none";
+            } else {
+                elt.style.display = "block";
+            }
+            if (matchInfo) {
+                const jobId = elt.getAttribute('data-job-id');
+                if (jobId) {
+                    addJobToFilters(jobId, matchInfo);
+                }
+            }
+        } else {
+            elt.style.opacity = "1";
+            elt.style.display = "block";
+        }
+    } catch (e) {
+        console.error("Error in hideOrShowJob:", e);
+    }
+}
+
+function addJobToFilters(jobId, matchInfo) {
+    if (!window.filteredJobs) {
+        window.filteredJobs = new Map();
+    }
+    window.filteredJobs.set(jobId, matchInfo);
+}
