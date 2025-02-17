@@ -446,45 +446,21 @@ function setListener(elt, jobSpec, wanted, property, finder, listener) {
     elt[property] = [button, listener];
 }
 
-function filterOneJob(elt) {
-    const company = getClassValue(elt, CLASS_NAMES.company);
-    const title = getClassValue(elt, CLASS_NAMES.title);
-    const location = getClassValue(elt, CLASS_NAMES.location);
-
-    if (!company && !title && !location) {
-        return;
+function getClassValue(elt, classes) {
+    if (!Array.isArray(classes)) {
+        classes = [classes];
     }
-    
-    if (matches(company, companyRegexps)) {
-        hideOrShowJob(elt, true, {company});
-        return;
+    try {
+        for (const cls of classes) {
+            const el = elt.querySelector('.' + cls);
+            if (el && el.textContent) {
+                return el.textContent.trim();
+            }
+        }
+    } catch (error) {
+        console.error("Error retrieving class value for", classes, ":", error);
     }
-    
-    if (matches(title, titleRegexps)) {
-        hideOrShowJob(elt, true, {title});
-        return;
-    }
-    
-    if (matches(location, locationRegexps)) {
-        hideOrShowJob(elt, true, {location});
-        return;
-    }
-    
-    hideOrShowJob(elt, false);
-}
-
-function matches(fieldValue, regexps) {
-    utils.debug(`matches(${fieldValue}, ${regexps})`);
-    if (! fieldValue) return false;
-    return regexps.some(r => r.test(fieldValue));
-}
-
-function getClassValue(classes, elt) {
-    utils.debug(`getClassValue(${classes}, ${utils.id(elt)})`);
-    var selector = classes.map(c => `.${c}`).join(", ");
-    var elts = elt.querySelectorAll(selector);
-    if (elts.length == 0) return false;
-    return elts[0].innerText;
+    return '';
 }
 
 function jobMatches(jobSpec) {
@@ -629,4 +605,101 @@ function addJobToFilters(jobId, matchInfo) {
         window.filteredJobs = new Map();
     }
     window.filteredJobs.set(jobId, matchInfo);
+}
+
+function maybeInsertManualFilterButton(elt) {
+    try {
+        if (!elt.hasAttribute("data-manual-initialized")) {
+            // Ensure the job card container can have absolutely positioned children
+            if (getComputedStyle(elt).position === "static") {
+                elt.style.position = "relative";
+            }
+            const button = getButtonElement();
+            button.style.position = "absolute";
+            // Adjust offsets to move the button to the bottom right of the card
+            button.style.bottom = "8px";
+            button.style.right = "8px";
+            button.style.zIndex = "10";
+            button.addEventListener("click", function (e) {
+                e.stopPropagation();
+                toggleManualFilter(elt);
+            });
+            elt.appendChild(button);
+            elt.setAttribute("data-manual-initialized", "true");
+        }
+    } catch (error) {
+        console.error("Error inserting manual filter button:", error);
+    }
+}
+
+function toggleManualFilter(elt) {
+    try {
+        if (elt.getAttribute("data-manual-filter") === "true") {
+            // Remove the manual filter: clear flag and restore styling.
+            elt.removeAttribute("data-manual-filter");
+            elt.style.opacity = "1";
+            elt.style.display = "block";
+        } else {
+            // Set the manual filter flag and apply filtered styling.
+            elt.setAttribute("data-manual-filter", "true");
+            elt.style.opacity = "0.3";
+            if (hideJobs) {
+                elt.style.display = "none";
+            } else {
+                elt.style.display = "block";
+            }
+        }
+    } catch (error) {
+        console.error("Error toggling manual filter:", error);
+    }
+}
+
+function filterOneJob(elt) {
+    try {
+        // Insert the manual filter button if not already added.
+        maybeInsertManualFilterButton(elt);
+        
+        // If the card is manually filtered, skip automatic filtering.
+        if (elt.getAttribute("data-manual-filter") === "true") {
+            return;
+        }
+        
+        // Get class values using our CLASS_NAMES arrays.
+        const company = getClassValue(elt, CLASS_NAMES.company);
+        const title = getClassValue(elt, CLASS_NAMES.title);
+        const location = getClassValue(elt, CLASS_NAMES.location);
+        
+        if (!company && !title && !location) {
+            return;
+        }
+        
+        if (matches(company, companyRegexps)) {
+            hideOrShowJob(elt, true, { company });
+            return;
+        }
+        
+        if (matches(title, titleRegexps)) {
+            hideOrShowJob(elt, true, { title });
+            return;
+        }
+        
+        if (matches(location, locationRegexps)) {
+            hideOrShowJob(elt, true, { location });
+            return;
+        }
+        
+        hideOrShowJob(elt, false);
+    } catch (error) {
+        console.error("Error processing job card:", error);
+    }
+}
+
+function matches(fieldValue, regexps) {
+    try {
+        if (!fieldValue) return false;
+        return regexps.some(r => r.test(fieldValue));
+    } catch (error) {
+        console.error("Error in matches for value:", fieldValue, error);
+        return false;
+    }
 }
