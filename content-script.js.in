@@ -86,10 +86,10 @@ function findUnhideButton(elt) {
 
 function getLocation(elt) {
     utils.debug(`getLocation(${utils.id(elt)})`);
-    var location = getClassValue(locationClasses, elt)
-    if (! location)
+    var location = getClassValue(elt, locationClasses);
+    if (!location)
         return false;
-    var workplace = getClassValue(workplaceClasses, elt)
+    var workplace = getClassValue(elt, workplaceClasses);
     if (workplace)
         location = `${location} (${workplace})`;
     return location;
@@ -526,11 +526,6 @@ function filterEverything() {
         }
     }
     
-    if (cards.length === 0) {
-        const originalSelector = cardClasses.map(c => `.${c}`).join(", ");
-        cards = document.querySelectorAll(originalSelector);
-    }
-    
     if (cards.length > 0) {
         Array.from(cards).forEach((card) => {
             try {
@@ -635,12 +630,13 @@ function maybeInsertManualFilterButton(elt) {
 function toggleManualFilter(elt) {
     try {
         if (elt.getAttribute("data-manual-filter") === "true") {
-            // Remove the manual filter: clear flag and restore styling.
+            // Toggle off: remove manual filter, restore styling, and remove entry.
             elt.removeAttribute("data-manual-filter");
             elt.style.opacity = "1";
             elt.style.display = "block";
+            removeManualJobFilter(elt);
         } else {
-            // Set the manual filter flag and apply filtered styling.
+            // Toggle on: apply manual filter styling and add entry.
             elt.setAttribute("data-manual-filter", "true");
             elt.style.opacity = "0.3";
             if (hideJobs) {
@@ -648,9 +644,62 @@ function toggleManualFilter(elt) {
             } else {
                 elt.style.display = "block";
             }
+            addManualJobFilter(elt);
         }
     } catch (error) {
         console.error("Error toggling manual filter:", error);
+    }
+}
+
+function addManualJobFilter(elt) {
+    const jobId = elt.getAttribute('data-job-id');
+    if (!jobId) return;
+
+    // Retrieve and clean the raw values with the correct (elt, classNames) order.
+    const rawTitle = getClassValue(elt, CLASS_NAMES.title);
+    const rawCompany = getClassValue(elt, CLASS_NAMES.company);
+    const rawLocation = getClassValue(elt, CLASS_NAMES.location);
+    const jobTitle = rawTitle ? rawTitle.replace(/\s+/g, ' ').trim() : '';
+    const jobCompany = rawCompany ? rawCompany.replace(/\s+/g, ' ').trim() : '';
+    const jobLocation = rawLocation ? rawLocation.replace(/\s+/g, ' ').trim() : '';
+
+    // Build a job spec object (rather than a string) for consistency.
+    const jobSpec = {
+        title: jobTitle,
+        company: jobCompany,
+        location: jobLocation,
+        private: hideJobs ? 1 : 0
+    };
+
+    // Initialize our global manual filter storage if not already present.
+    if (!window.manualJobFilters) {
+        window.manualJobFilters = {};
+    }
+    // If the stored entry for this jobId is the same (using JSON comparison), do nothing.
+    if (window.manualJobFilters[jobId] &&
+        JSON.stringify(window.manualJobFilters[jobId]) === JSON.stringify(jobSpec)) {
+        return;
+    }
+    
+    window.manualJobFilters[jobId] = jobSpec;
+
+    // Combine all entries into an array and write to storage so that later code can use .map.
+    const allEntries = Object.values(window.manualJobFilters);
+    chrome.storage.sync.set({ jobFilters: allEntries }, function () {
+        console.log("Updated job filters with:", jobSpec);
+    });
+}
+
+function removeManualJobFilter(elt) {
+    const jobId = elt.getAttribute('data-job-id');
+    if (!jobId || !window.manualJobFilters) return;
+
+    if (window.manualJobFilters[jobId]) {
+        delete window.manualJobFilters[jobId];
+        const allEntries = Object.values(window.manualJobFilters).join("\n");
+        chrome.storage.sync.set({ jobFilters: allEntries }, function() {
+            console.log("Removed job filter for", jobId);
+        });
     }
 }
 
