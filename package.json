@@ -3,6 +3,6 @@
     "eslint": "^8.36.0"
   },
   "devDependencies": {
-    "web-ext": "^7.6.0"
+    "web-ext": "^8.5.0"
   }
 }
