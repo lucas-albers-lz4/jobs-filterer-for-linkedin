@@ -1,8 +1,13 @@
 {
+  "name": "jobs-filterer-for-linkedin",
+  "private": true,
   "devDependencies": {
-    "eslint": "^8.36.0"
+    "web-ext": "^10.5.0"
   },
-  "devDependencies": {
-    "web-ext": "^8.10.0"
+  "overrides": {
+    "shell-quote": "^1.9.0",
+    "brace-expansion": "^5.0.2",
+    "minimatch": "^10.1.1",
+    "node-forge": "^1.4.0"
   }
 }
